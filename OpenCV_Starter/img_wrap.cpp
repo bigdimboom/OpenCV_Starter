@@ -31,25 +31,72 @@ void InitOutputPts()
 	gTargetPts.push_back(Point2f(0, TARGET_ROW - 1));
 }
 
-Mat& GetProjMat(const Point2f src[], const Point2f dst[])
+Mat GetProjMat(const Point2f src[], int targetRowSize, int targetColSize)
 {
-	Mat tansformMat = Mat(3, 3, CV_32FC1);
+	float dx1 = src[1].x - src[2].x; //
+	float dy1 = src[1].y - src[2].y; //
 
-	return tansformMat;
+	float dx2 = src[3].x - src[2].x; //
+	float dy2 = src[3].y - src[2].y; //
+
+	float ZGMx = src[0].x - src[1].x + src[2].x - src[3].x; //
+	float ZGMy = src[0].y - src[1].y + src[2].y - src[3].y; //
+
+	float g = (ZGMx * dy2 - ZGMy * dx2) / (dx1 * dy2 - dy1 * dx2); //
+	float h = (ZGMy * dx1 - ZGMx * dy1) / (dx1 * dy2 - dy1 * dx2); //
+
+	float a = src[1].x - src[0].x + g * src[1].x; //
+	float b = src[3].x - src[0].x + h * src[3].x; //
+	float c = src[0].x; //
+	float d = src[1].y - src[0].y + g * src[1].y; //
+	float e = src[3].y - src[0].y + h * src[3].y; //
+	float f = src[0].y;
+
+	Mat C = (Mat_<float>(3, 3) << a, b, c, d, e, f, g, h, 1);
+
+	//cout << C << endl;
+
+	Mat Scale = (Mat_<float>(3, 3) << targetColSize, 0, 0, 0, targetRowSize, 0, 0, 0, 1);
+
+	Mat ret = C * Scale;
+
+	return ret;
 }
 
 // Using home made transform function
 void ProcessImg(Mat& src, Mat& dest)
 {
 	// TODO:
+	Mat_<Vec3b> _src = src;
+	Mat_<Vec3b> _dest = dest;
+
+	Mat transformationMatrix = GetProjMat(&gDistortPts[0], TARGET_ROW, TARGET_COL);
+
+	for (int i = 0; i < src.rows; ++i)
+	{
+		for (int j = 0; j < src.cols; ++j)
+		{
+			int x = i, y = j;
+
+			Mat orign = Mat(Point3f(i, j, 1));
+			Mat ret = transformationMatrix * orign;
+			Point3f retPts(ret);
+			x = retPts.x / retPts.z;
+			y = retPts.y / retPts.z;
+			if (x >= 0 && x < dest.rows && y >= 0 && y < dest.cols)
+			{
+				_dest(x, y) = _src(i, j);
+			}
+		}
+	}
 }
 
 // Using OpenCV built-in
 void ProcessImgCV(Mat& src, Mat& dest)
 {
 	//TODO:
-	Mat transformationMatrix = getPerspectiveTransform(&gTargetPts[0], &gDistortPts[0]);
-	warpPerspective(src, dest, transformationMatrix.inv(), dest.size(), CV_INTER_LINEAR, BORDER_ISOLATED);
+	Mat transformationMatrix = getPerspectiveTransform(&gDistortPts[0], &gTargetPts[0]);
+	warpPerspective(src, dest, transformationMatrix, dest.size(), CV_INTER_LINEAR, BORDER_ISOLATED);
 }
 
 int main(int argc, char** argv)
@@ -87,12 +134,12 @@ int main(int argc, char** argv)
 	// Where you output
 	Mat outputImg;
 	outputImg = Mat::zeros(TARGET_ROW, TARGET_COL, CV_8UC3);
+	//outputImg = Mat::zeros(1, 1, CV_8UC3);
 
 	// Applay Processing Function
 	// TODO
 	//ProcessImgCV(inputImg, outputImg);
-	//ProcessImgCV(inputImg, outputImg);
-	ProcessImgCV(inputImg, outputImg);
+	ProcessImg(inputImg, outputImg);
 
 	namedWindow(outputPath, CV_WINDOW_AUTOSIZE);
 	imshow(outputPath, outputImg);
