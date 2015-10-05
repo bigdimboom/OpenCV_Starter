@@ -28,12 +28,12 @@ bool RankTransform(Mat& input, Mat& out, int windowSize)
 		for (int c = center; c < out.cols - center; ++c)
 		{
 			int rank = 0;
-			
+
 			for (int wr = -center; wr < center; ++wr)
 			{
 				for (int wc = -center; wc < center; ++wc)
 				{
-					if ( input.at<uchar>(r + wr, c + wc) < input.at<uchar>(r, c) )
+					if (input.at<uchar>(r + wr, c + wc) < input.at<uchar>(r, c))
 					{
 						++rank;
 					}
@@ -55,7 +55,7 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 	}
 
 	output = Mat::zeros(inputLeft.rows, inputLeft.cols, CV_8U);
-	  // the output disperity map.
+	// the output disperity map.
 	int center = (windowSize - 1) / 2;
 	for (int r = center; r < inputLeft.rows - center; ++r)
 	{
@@ -72,15 +72,15 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 				{
 					for (int wc = -center; wc < center; ++wc)
 					{
-						if ( c - center + d >=0 )
+						if (c - center + d >= 0)
 						{
 							int cost = abs(inputLeft.at<uchar>(r + wr, c + wc) -
-								inputRight.at<uchar>(r + wr, c + wc + d));
+										   inputRight.at<uchar>(r + wr, c + wc + d));
 							// difference for one pixel.
 
 							currentCost = currentCost + cost;
-							  // add all element in the window
-							  // sum of all pixel differences.
+							// add all element in the window
+							// sum of all pixel differences.
 						}
 					}
 				}
@@ -100,6 +100,71 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 	return true;
 }
 
+// Compute the SAD in n ¡Á n windows.
+bool PKRN(Mat& inputLeft, Mat& inputRight, Mat& output, Mat& assignmentMap, int windowSize = 3)
+{
+	if (windowSize % 2 == 0)
+	{
+		return false; // windows size must be an odd number.
+	}
+
+	output = Mat::zeros(inputLeft.rows, inputLeft.cols, CV_8U);
+	assignmentMap = Mat::zeros(inputLeft.rows, inputLeft.cols, CV_8U);
+
+	// the output disperity map.
+	int center = (windowSize - 1) / 2;
+	for (int r = center; r < inputLeft.rows - center; ++r)
+	{
+		for (int c = center + MAX_DISPARITY; c < inputLeft.cols - center; ++c)
+		{
+			int prevCost = INT_MAX;
+			int prevprevCost = INT_MAX;
+
+			int theMin = MIN_DISPARITY; 
+			// int the2ndMin = MIN_DISPARITY;
+
+			for (int d = 0; d >= -MAX_DISPARITY; --d) // slide window
+			{
+				int currentCost = 0; // local confidence
+				for (int wr = -center; wr < center; ++wr)
+				{
+					for (int wc = -center; wc < center; ++wc)
+					{
+						if (c - center + d >= 0)
+						{
+							int cost = abs(inputLeft.at<uchar>(r + wr, c + wc) -
+										   inputRight.at<uchar>(r + wr, c + wc + d));
+							// difference for one pixel.
+
+							currentCost = currentCost + cost;
+							// add all element in the window
+							// sum of all pixel differences.
+						}
+					}
+				}
+
+				// Simple ¡°Winner Takes All¡± - Algorithm:
+				// For every pixel select the disparity with lowest cost.
+				if (prevCost > currentCost)
+				{
+					prevprevCost = prevCost;
+					prevCost = currentCost;
+					// the2ndMin = theMin;
+					theMin = abs(d);
+				}
+			}
+
+			if ((float)(prevprevCost ) / (float)prevCost >= 0.5f) // ( c2 / c1 >=0.5f)
+			{
+				output.at<uchar>(r, c) = theMin;
+				assignmentMap.at<uchar>(r, c) = 1;
+			}
+		}
+	}
+
+	return true;
+}
+
 float ErrorRate(Mat& toBeTest, Mat& sample)
 {
 	int count = 0;
@@ -108,16 +173,37 @@ float ErrorRate(Mat& toBeTest, Mat& sample)
 	{
 		for (int c = 0; c < toBeTest.rows && c < sample.rows; ++c)
 		{
-			float value = round ((float)sample.at<uchar>(r, c) / 4.0f );
-			if (toBeTest.at<uchar>(r, c) < (int)value - 1 
-				|| toBeTest.at<uchar>(r, c) > (int)value + 1)
+			float value = round((float)sample.at<uchar>(r, c) / 4.0f);
+			if ( (toBeTest.at<uchar>(r, c) < (int)value - 1
+				|| toBeTest.at<uchar>(r, c) > (int)value + 1) )
 			{
 				count++;
 			}
 		}
 	}
 
-	return  ( float(count) / ( (float)sample.rows * sample.cols ) );
+	return  (float(count) / ((float)sample.rows * sample.cols));
+}
+
+float PKRNErrorRate(Mat& toBeTest, Mat& assignmentMap, Mat& sample)
+{
+	int count = 0;
+
+	for (int r = 0; r < toBeTest.rows && r < sample.rows; ++r)
+	{
+		for (int c = 0; c < toBeTest.rows && c < sample.rows; ++c)
+		{
+			float value = round((float)sample.at<uchar>(r, c) / 4.0f);
+			if ((toBeTest.at<uchar>(r, c) < (int)value - 1
+				|| toBeTest.at<uchar>(r, c) > (int)value + 1) 
+				&& assignmentMap.at<uchar>(r,c) == 1)
+			{
+				count++;
+			}
+		}
+	}
+
+	return  (float(count) / ((float)sample.rows * sample.cols));
 }
 
 
@@ -129,6 +215,8 @@ int main(int argc, char** argv)
 
 	const char* disparityPath3by3 = "3by3.bmp";
 	const char* disparityPath15by15 = "15by15.bmp";
+	const char* errorRatePath = "error.txt";
+	const char* PKRNerrorRatePath = "PRKNError.txt";
 
 	//Read Img
 	Mat leftImg;
@@ -172,7 +260,7 @@ int main(int argc, char** argv)
 		std::cerr << "rank compute filed\n";
 		return EXIT_FAILURE;
 	}
-	// SAD:
+	//// SAD:
 	bool result1 = SAD(rankLeft, rankRight, threeByThreeOutput, 3);
 	bool result2 = SAD(rankLeft, rankRight, fifteenByFifteenOutput, 15);
 	if (!result1 || !result2)
@@ -185,15 +273,31 @@ int main(int argc, char** argv)
 	float errorRate2 = ErrorRate(fifteenByFifteenOutput, groundTruthImg);
 
 	ofstream errorRateFile;
-	errorRateFile.open("error.txt");
+	errorRateFile.open(errorRatePath);
 	errorRateFile << "3 by by's error rate: " << errorRate1 << ".\n"
 		<< "15 by 15 error rate is: " << errorRate2 << ".\n";
 	errorRateFile.close();
 
+	Mat PKRNResult;
+	Mat PRKNAssignment;
+	bool pkrn = PKRN(rankLeft, rankRight, PKRNResult, PRKNAssignment);
+	if (!pkrn)
+	{
+		std::cerr << "PKRN compute failed\n";
+		return EXIT_FAILURE;
+	}
+
+	ofstream errorRatePKRN;
+	errorRatePKRN.open(PKRNerrorRatePath);
+	errorRatePKRN << "PKRN error rate: " << PKRNErrorRate(PKRNResult, PRKNAssignment, groundTruthImg) << ".\n";
+	errorRatePKRN.close();
+
 	namedWindow(disparityPath3by3, CV_WINDOW_AUTOSIZE);
 	namedWindow(disparityPath15by15, CV_WINDOW_AUTOSIZE);
+	namedWindow("PKRN", CV_WINDOW_AUTOSIZE);
 	imshow(disparityPath3by3, threeByThreeOutput);
 	imshow(disparityPath15by15, fifteenByFifteenOutput);
+	imshow("PKRN", PKRNResult);
 
 	cout << "Press \"s\" to save, \"esc\" to close the program.\n";
 	int key = waitKey(0);
