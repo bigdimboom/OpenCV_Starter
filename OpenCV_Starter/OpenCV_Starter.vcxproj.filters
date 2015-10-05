@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="img_wrap.cpp">
+    <ClCompile Include="disperity_map.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
