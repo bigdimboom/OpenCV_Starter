@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="disperity_map.cpp">
+    <ClCompile Include="harris_conner_detection_and_matching.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

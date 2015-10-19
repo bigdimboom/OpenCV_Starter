@@ -53,7 +53,6 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 	{
 		return false; // windows size must be an odd number.
 	}
-
 	output = Mat::zeros(inputLeft.rows, inputLeft.cols, CV_8U);
 	// the output disperity map.
 	int center = (windowSize - 1) / 2;
@@ -84,7 +83,6 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 						}
 					}
 				}
-
 				// Simple ¡°Winner Takes All¡± - Algorithm:
 				// For every pixel select the disparity with lowest cost.
 				if (prevCost > currentCost)
@@ -96,7 +94,6 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 			output.at<uchar>(r, c) = theMin;
 		}
 	}
-
 	return true;
 }
 
@@ -206,6 +203,23 @@ float PKRNErrorRate(Mat& toBeTest, Mat& assignmentMap, Mat& sample)
 	return  (float(count) / ((float)sample.rows * sample.cols));
 }
 
+int EffetivePixels(Mat& assignmentMap)
+{
+	int ret = 0;
+
+	for (int r = 0; r < assignmentMap.rows;  ++r)
+	{
+		for (int c = 0; c < assignmentMap.rows; ++c)
+		{
+			if (assignmentMap.at<uchar>(r, c) == 1)
+			{
+				++ret;
+			}
+		}
+	}
+	return ret;
+}
+
 
 int main(int argc, char** argv)
 {
@@ -215,6 +229,7 @@ int main(int argc, char** argv)
 
 	const char* disparityPath3by3 = "3by3.bmp";
 	const char* disparityPath15by15 = "15by15.bmp";
+	const char* disparityConfidence = "3by3ConfidenceDisparity.bmp";
 	const char* errorRatePath = "error.txt";
 	const char* PKRNerrorRatePath = "PRKNError.txt";
 
@@ -274,7 +289,7 @@ int main(int argc, char** argv)
 
 	ofstream errorRateFile;
 	errorRateFile.open(errorRatePath);
-	errorRateFile << "3 by by's error rate: " << errorRate1 << ".\n"
+	errorRateFile << "3 by 3's error rate: " << errorRate1 << ".\n"
 		<< "15 by 15 error rate is: " << errorRate2 << ".\n";
 	errorRateFile.close();
 
@@ -289,7 +304,8 @@ int main(int argc, char** argv)
 
 	ofstream errorRatePKRN;
 	errorRatePKRN.open(PKRNerrorRatePath);
-	errorRatePKRN << "PKRN error rate: " << PKRNErrorRate(PKRNResult, PRKNAssignment, groundTruthImg) << ".\n";
+	errorRatePKRN << "PKRN error rate: " << PKRNErrorRate(PKRNResult, PRKNAssignment, groundTruthImg) << ".\n"
+		<< "the number of pixels that have been kept: " << EffetivePixels(PRKNAssignment) << ".\n";
 	errorRatePKRN.close();
 
 	namedWindow(disparityPath3by3, CV_WINDOW_AUTOSIZE);
@@ -313,6 +329,7 @@ int main(int argc, char** argv)
 		bool succ = false;
 		succ = imwrite(disparityPath3by3, threeByThreeOutput);
 		succ = imwrite(disparityPath15by15, fifteenByFifteenOutput);
+		succ = imwrite(disparityConfidence, PKRNResult);
 		if (!succ)
 		{
 			printf(" Image writing fialed \n ");

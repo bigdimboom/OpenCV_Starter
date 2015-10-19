@@ -19,7 +19,7 @@
     </ProjectConfiguration>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="disperity_map.cpp" />
+    <ClCompile Include="harris_conner_detection_and_matching.cpp" />
   </ItemGroup>
   <PropertyGroup Label="Globals">
     <ProjectGuid>{08D26B95-623C-4CC3-93D7-2373B2873501}</ProjectGuid>
