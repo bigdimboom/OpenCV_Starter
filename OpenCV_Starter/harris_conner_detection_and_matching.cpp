@@ -55,12 +55,9 @@ void ComputeI(Mat& in, Mat& out, Mat& filter)
 
 void applyGaussian(Mat& in, Mat& out, double sigma = 1.0)
 {
-	// TODO: GenerateFilter
 	out = Mat::zeros(in.rows, in.cols, TYPE_SIZE);
-
 	Mat G = Mat::zeros(5, 5, CV_64F);
 	// init Gussian smooth filter
-
 	double left = 2.0 * CV_PI * sigma * sigma;
 	// the denominator in the left side of the formula.
 	double right = 2.0 * sigma * sigma;
@@ -269,7 +266,7 @@ void sortFeatureSet(vector<LeftFeature>& featureSet)
 	}
 }
 
-void generateReport(vector<LeftFeature>& featureSet, Mat& left, Mat& right)
+void generateReport(vector<LeftFeature>& featureSet, Mat& left, Mat& right, double select=0.05)
 {
 	// count total number of matching in this set.
 	int totalNumberOfPoints = 0;
@@ -299,7 +296,7 @@ void generateReport(vector<LeftFeature>& featureSet, Mat& left, Mat& right)
 	Mat assignmentMap = Mat::zeros(left.rows, left.cols, CV_8U);
 	for (int i = 0; i < featureSet.size(); ++i)
 	{
-		int qualifiedSize = (int)round(featureSet[i].rightMatches.size() * 0.05); // 5% 
+		int qualifiedSize = (int)round(featureSet[i].rightMatches.size() * select); 
 		for (int j = 0; j < qualifiedSize; ++j)
 		{
 			assignmentMap.at<uchar>(featureSet[i].rightMatches[j].r, featureSet[i].rightMatches[j].c) = 1;
@@ -351,8 +348,8 @@ int main(int argc, char** argv)
 	//TODO:
 	// STEP 1 - STEP 4
 	Mat leftOut, rightOut, gtOut;
-	execFeatureExtraction(leftImg, leftOut);
-	execFeatureExtraction(rightImg, rightOut);
+	execFeatureExtraction(leftImg, leftOut); // compute left image.
+	execFeatureExtraction(rightImg, rightOut); // compute right image.
 
 	// STEP 5 - STEP 6.
 	vector<LeftFeature> featureSet;
