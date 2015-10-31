@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="harris_conner_detection_and_matching.cpp">
+    <ClCompile Include="binocular_3d_vision_reconstruction.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>

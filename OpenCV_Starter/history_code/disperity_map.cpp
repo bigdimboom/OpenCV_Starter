@@ -58,12 +58,12 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 	int center = (windowSize - 1) / 2;
 	for (int r = center; r < inputLeft.rows - center; ++r)
 	{
-		for (int c = center + MAX_DISPARITY; c < inputLeft.cols - center; ++c)
+		for (int c = center; c < inputLeft.cols - center; ++c)
 		{
 			int prevCost = INT_MAX;
 			int theMin = MIN_DISPARITY;
 
-			for (int d = 0; d >= -MAX_DISPARITY; --d) // slide window
+			for (int d = 0; d <= MAX_DISPARITY; ++d) // slide window
 			{
 				int currentCost = 0;
 
@@ -71,10 +71,10 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int windowSize)
 				{
 					for (int wc = -center; wc < center; ++wc)
 					{
-						if (c - center + d >= 0)
+						if (c - center - d >= 0)
 						{
 							int cost = abs(inputLeft.at<uchar>(r + wr, c + wc) -
-										   inputRight.at<uchar>(r + wr, c + wc + d));
+										   inputRight.at<uchar>(r + wr, c + wc - d));
 							// difference for one pixel.
 
 							currentCost = currentCost + cost;
@@ -112,7 +112,7 @@ bool PKRN(Mat& inputLeft, Mat& inputRight, Mat& output, Mat& assignmentMap, int 
 	int center = (windowSize - 1) / 2;
 	for (int r = center; r < inputLeft.rows - center; ++r)
 	{
-		for (int c = center + MAX_DISPARITY; c < inputLeft.cols - center; ++c)
+		for (int c = center; c < inputLeft.cols - center; ++c)
 		{
 			int prevCost = INT_MAX;
 			int prevprevCost = INT_MAX;
@@ -120,17 +120,17 @@ bool PKRN(Mat& inputLeft, Mat& inputRight, Mat& output, Mat& assignmentMap, int 
 			int theMin = MIN_DISPARITY; 
 			// int the2ndMin = MIN_DISPARITY;
 
-			for (int d = 0; d >= -MAX_DISPARITY; --d) // slide window
+			for (int d = 0; d <= MAX_DISPARITY; ++d) // slide window
 			{
 				int currentCost = 0; // local confidence
 				for (int wr = -center; wr < center; ++wr)
 				{
 					for (int wc = -center; wc < center; ++wc)
 					{
-						if (c - center + d >= 0)
+						if (c - center - d >= 0)
 						{
 							int cost = abs(inputLeft.at<uchar>(r + wr, c + wc) -
-										   inputRight.at<uchar>(r + wr, c + wc + d));
+										   inputRight.at<uchar>(r + wr, c + wc - d));
 							// difference for one pixel.
 
 							currentCost = currentCost + cost;
