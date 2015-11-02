@@ -7,6 +7,16 @@
 #include <opencv2/core/core.hpp>           // cv::Mat
 #include <opencv2/highgui/highgui.hpp>     // cv::imread()
 #include <opencv2/imgproc/imgproc.hpp>     // image process lib opencv
+#include <assert.h>						   // assert(...)
+
+
+#define FOCAL_LENGTH 1247 // pixels
+#define UNIT_BASELINE 40  // millimeters
+
+#define TYPE_SIZE CV_8U
+#define MAX_COLOR UCHAR_MAX
+typedef uchar ImageType;
+
 
 using namespace std;
 using namespace cv;
@@ -28,6 +38,67 @@ void showImage(Mat& img, string path)
 	imshow(path, img);
 }
 
+// pretend disMap is the world center;
+// then make "out" the world center;
+// then transfer 3d points to the "out" system.
+void generateDepth(Mat& out,
+				   const Mat& dispMap,
+				   double dispMapPosX, // (0,0,0) is the "out" map position; dispMap position should be compare to it.
+				   int baseLine,
+				   int focalLength)
+{
+	out = Mat::zeros(dispMap.rows, dispMap.cols, TYPE_SIZE);
+
+	for (int r = 0; r < out.rows; ++r)
+	{
+		for (int c = 0; c < out.cols; ++c)
+		{
+			out.at<ImageType>(r, c) = MAX_COLOR;
+		}
+	}
+
+	for (int r = 0; r < dispMap.rows; ++r)
+	{
+		for (int c = 0; c < dispMap.cols; ++c)
+		{
+			double disp = dispMap.at<uchar>(r, c) / 3.0;
+			if (disp == 0)
+			{
+				continue;
+			}
+			double depthZ = ((double)focalLength * (double)baseLine / disp);
+			double u = (double)c - (double)dispMap.cols / 2.0; // u is the x coodinate for the disparity map.
+			double x = (u * depthZ / focalLength) + dispMapPosX; // x is the x coodinate in view 3 camera system.
+			// y in 3D will not change.
+			double uu = x * focalLength / depthZ; // the x of view 3 in 2D
+			int newC = (int)(round(uu) + (double)dispMap.cols / 2.0);
+
+			if (newC > 0 && newC < out.cols)
+			{
+				out.at<ImageType>(r, newC) = (ImageType)(round((double)focalLength * (double)baseLine / depthZ) * 3.0);
+			}
+		}
+	}
+}
+
+void combine(Mat& out, const Mat& depthMap1, const Mat& depthMap2)
+{
+	assert(depthMap1.cols == depthMap2.cols
+		   && depthMap1.rows == depthMap2.rows);
+
+	out = Mat::zeros(depthMap1.rows, depthMap1.cols, TYPE_SIZE);
+
+	for (int r = 0; r < out.rows; ++r)
+	{
+		for (int c = 0; c < out.cols; ++c)
+		{
+			ImageType one = depthMap1.at<ImageType>(r, c);
+			ImageType two = depthMap2.at<ImageType>(r, c);
+			out.at<ImageType>(r, c) = one <= two ? one : two;
+		}
+	}
+}
+
 int main(int argc, char** argv)
 {
 	string disp1 = "images/disp1.pgm";
@@ -39,6 +110,8 @@ int main(int argc, char** argv)
 	string view4 = "images/view4.pgm";
 	string view5 = "images/view5.pgm";
 	string view6 = "images/view6.pgm";
+
+	string depthMapMix = "report/depthMap_mix.bmp";
 
 	//Read Img
 	map<string, Mat> img;
@@ -60,13 +133,21 @@ int main(int argc, char** argv)
 	}
 
 	// TODO: main steps
+	// STEP 1: Generate depth for view 3 from ground truth view 1 and view 5
+	Mat depthMap1, depthMap2, theDepth;
+	generateDepth(depthMap1, img[disp1], -(UNIT_BASELINE * 2), UNIT_BASELINE, FOCAL_LENGTH);
+	generateDepth(depthMap2, img[disp5], UNIT_BASELINE * 2, UNIT_BASELINE, FOCAL_LENGTH);
+	combine(theDepth, depthMap1, depthMap2);
 
+	Mat test1 = img[disp1];
+	Mat test2 = img[disp5];
+	showImage(theDepth, depthMapMix);
 
+	//for (auto i = img.begin(); i != img.end(); ++i)
+	//{
+	//	showImage(i->second, i->first);
+	//}
 
-	for (auto i = img.begin(); i != img.end(); ++i)
-	{
-		showImage(i->second, i->first);
-	}
 	cout << "Press \"s\" to save, \"esc\" to close the program.\n";
 	int key = waitKey(0);
 
@@ -79,7 +160,7 @@ int main(int argc, char** argv)
 	{
 		// Write Output
 		bool succ = false;
-		// succ = imwrite("report/test.bmp", view0Img);
+		succ = imwrite(depthMapMix, theDepth);
 		if (!succ)
 		{
 			printf(" Image writing fialed \n ");
