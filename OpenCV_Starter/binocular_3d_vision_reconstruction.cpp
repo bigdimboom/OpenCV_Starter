@@ -14,7 +14,7 @@
 #define UNIT_BASELINE 40  // millimeters
 
 #define DEPTH_TYPE_SIZE CV_64F
-#define DEPTH_INFINITY 9999999
+#define DEPTH_INFINITY 999999
 typedef double DepthType;
 
 #define IMAGE_TYPE_SIZE CV_8U
@@ -68,7 +68,8 @@ void generateDepth(Mat& out, // view 3
 				   const Mat& dispMap,
 				   int transformX, // (0,0,0) is the "out" map position; dispMap position should be compare to it.
 				   int baseLine,
-				   int focalLength)
+				   int focalLength,
+				   bool isDispNegtive = false)
 {
 	out = Mat::zeros(dispMap.rows, dispMap.cols, DEPTH_TYPE_SIZE);
 
@@ -85,6 +86,7 @@ void generateDepth(Mat& out, // view 3
 		for (int c = 0; c < dispMap.cols; ++c)
 		{
 			double disp = (double)dispMap.at<uchar>(r, c) / 3.0;
+			disp = isDispNegtive == true ? -disp : disp;
 
 			if (disp == 0)
 			{
@@ -132,6 +134,98 @@ void combine(Mat& out, const Mat& depthMap1, const Mat& depthMap2)
 	}
 }
 
+// Compute the rank transform in n ¡Á n windows.
+bool RankTransform(Mat& input, Mat& out, int windowSize)
+{
+	if (windowSize % 2 == 0)
+	{
+		return false; // windows size must be an odd number
+	}
+
+	out = Mat::zeros(input.rows, input.cols, IMAGE_TYPE_SIZE);
+
+	int center = (windowSize - 1) / 2;
+
+	for (int r = center; r < out.rows - center; ++r)
+	{
+		for (int c = center; c < out.cols - center; ++c)
+		{
+			int rank = 0;
+
+			for (int wr = -center; wr < center; ++wr)
+			{
+				for (int wc = -center; wc < center; ++wc)
+				{
+					if (input.at<ImageType>(r + wr, c + wc) < input.at<ImageType>(r, c))
+					{
+						++rank;
+					}
+				}
+			}
+
+			out.at<ImageType>(r, c) = rank;
+		}
+	}
+	return true;
+}
+
+// Compute the SAD in n ¡Á n windows.
+bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int minDisparity, int maxDisparity, int windowSize)
+{
+	if (windowSize % 2 == 0)
+	{
+		return false; // windows size must be an odd number.
+	}
+	output = Mat::zeros(inputLeft.rows, inputLeft.cols, IMAGE_TYPE_SIZE);
+	// the output disperity map.
+	int center = (windowSize - 1) / 2;
+	for (int r = center; r < inputLeft.rows - center; ++r)
+	{
+		for (int c = center; c < inputLeft.cols - center; ++c)
+		{
+			int prevCost = INT_MAX;
+			int theMin = minDisparity;
+
+			if (c < center + maxDisparity)
+			{
+				output.at<ImageType>(r, c) = theMin * 3;
+				continue;
+			}
+
+			for (int d = 0; d <= maxDisparity; ++d) // slide window
+			{
+				int currentCost = 0;
+
+				for (int wr = -center; wr < center; ++wr)
+				{
+					for (int wc = -center; wc < center; ++wc)
+					{
+						if (c - center - d >= 0)
+						{
+							int cost = abs(inputLeft.at<ImageType>(r + wr, c + wc) -
+										   inputRight.at<ImageType>(r + wr, c + wc - d));
+							// difference for one pixel.
+
+							currentCost = currentCost + cost;
+							// add all element in the window
+							// sum of all pixel differences.
+						}
+					}
+				}
+				// Simple ¡°Winner Takes All¡± - Algorithm:
+				// For every pixel select the disparity with lowest cost.
+				if (prevCost > currentCost)
+				{
+					prevCost = currentCost;
+					theMin = abs(d);
+				}
+			}
+			output.at<ImageType>(r, c) = theMin * 3;
+		}
+	}
+	return true;
+}
+
 int main(int argc, char** argv)
 {
 	string disp1 = "images/disp1.pgm";
@@ -144,7 +238,8 @@ int main(int argc, char** argv)
 	string view5 = "images/view5.pgm";
 	string view6 = "images/view6.pgm";
 
-	string depthMapMix = "report/depthMap_mix.bmp";
+	string depthMapMixA = "report/depthMap_mix_for_a.bmp";
+	string depthMapMixB = "report/depthMap_mix_for_b.bmp";
 
 	//Read Img
 	map<string, Mat> img;
@@ -167,17 +262,71 @@ int main(int argc, char** argv)
 
 	// TODO: main steps for (a)
 	// STEP 1: Generate depth for view 3 from ground truth view 1 and view 5
-	Mat depthMap1, depthMap2, theDepth, depthImage;
+	Mat depthMap1, depthMap2, theDepthMap, depthImage1;
 	generateDepth(depthMap1, img[disp1], -2 * UNIT_BASELINE, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
-	generateDepth(depthMap2, img[disp5],  2 * UNIT_BASELINE, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
-	// STEP 2: project two depth maps to view3, pick the value that is closer to camera.
-	combine(theDepth, depthMap1, depthMap2);
-	visualizeDepthMap(theDepth, depthImage, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
+	generateDepth(depthMap2, img[disp5], 2 * UNIT_BASELINE, -UNIT_BASELINE * (5 - 1), FOCAL_LENGTH, true);
 
-	showImage(depthImage, depthMapMix);
+	// STEP 2: project two depth maps to view3, pick the value that is closer to camera.
+	combine(theDepthMap, depthMap1, depthMap2);
+
+	// STEP 3: visualize the depth map
+	visualizeDepthMap(theDepthMap, depthImage1, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
+	showImage(depthImage1, depthMapMixA);
 
 	// TODO: main steps for (b)
-	// STEP 1: calculate 3 disperity maps.
+	// STEP 1: calculate 6 rank maps.
+	vector<Mat> rankMaps;
+	bool extractSucc = false;
+	for (auto i = img.begin(); i != img.end(); ++i)
+	{
+		if (i->first != disp1 && i->first != disp5)
+		{
+			Mat tmp;
+			extractSucc = RankTransform(i->second, tmp, 5);
+			if (!extractSucc)
+			{
+				std::cerr << "rank compute filed\n";
+				return EXIT_FAILURE;
+			}
+			rankMaps.push_back(tmp);
+		}
+	}
+
+	// STEP 2: calculate 3 disparity maps.
+	vector<Mat> dispMaps;
+	for (int i = 1; i < rankMaps.size(); i = i+2)
+	{
+		Mat tmp;
+		extractSucc = SAD(rankMaps[i], rankMaps[i + 1], tmp, 0, 22, 9); 
+			// Why 0 - 22? Because view 1-5 disparity is 0 - 85.
+		if (!extractSucc)
+		{
+			std::cerr << "disparity compute filed\n";
+			return EXIT_FAILURE;
+		}
+		dispMaps.push_back(tmp);
+	}
+	//for (int i = 0; i < dispMaps.size(); ++i)
+	//{
+	//	showImage(dispMaps[i], to_string(i));
+	//}
+
+	// STEP 3: Generate 3 depthMap for peoblem 2 and combine them to one.
+	Mat depth1, depth2, depth3, theDepth, depthImage2;
+	generateDepth(depth1, dispMaps[0], -2 * UNIT_BASELINE, UNIT_BASELINE, FOCAL_LENGTH);
+	generateDepth(depth2, dispMaps[1],  0,                 UNIT_BASELINE, FOCAL_LENGTH);
+	generateDepth(depth3, dispMaps[2],  2 * UNIT_BASELINE, UNIT_BASELINE, FOCAL_LENGTH);
+	Mat tmpDepthMap;
+	combine(tmpDepthMap, depth1, depth2);
+	combine(theDepth, tmpDepthMap, depth3);
+
+	// STEP 4: visualize the depthMap for problem 3.
+	visualizeDepthMap(theDepth, depthImage2, UNIT_BASELINE, FOCAL_LENGTH);
+	showImage(depthImage2, depthMapMixB);
+
+	// STEP 5: calculate error rate theDepth :: theDepthMap
+
+
 
 
 
@@ -185,7 +334,6 @@ int main(int argc, char** argv)
 	//{
 	//	showImage(i->second, i->first);
 	//}
-
 	cout << "Press \"s\" to save, \"esc\" to close the program.\n";
 	int key = waitKey(0);
 
@@ -198,7 +346,8 @@ int main(int argc, char** argv)
 	{
 		// Write Output
 		bool succ = false;
-		succ = imwrite(depthMapMix, depthImage);
+		succ = imwrite(depthMapMixA, depthImage1);
+		succ = imwrite(depthMapMixB, depthImage2);
 		if (!succ)
 		{
 			printf(" Image writing fialed \n ");
