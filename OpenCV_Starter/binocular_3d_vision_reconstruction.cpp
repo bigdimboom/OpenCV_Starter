@@ -97,7 +97,7 @@ void generateDepth(Mat& out, // view 3
 			double camX = x + (double)transformX; // x position in the view 3 camera. (from input map postion to view 3).
 			int newC = (int) (round(camX * (double)(focalLength) / depthZ 
 								+ (double)dispMap.cols / 2.0)
-							 ); // project 3d points to 2D image system of View 3.
+							 ); // project 3d points to uv(2D) coordinate of View 3.
 			// move horizontally; therefore, y values do not change.
 
 			if (newC >= 0 && newC < out.cols)
@@ -109,6 +109,9 @@ void generateDepth(Mat& out, // view 3
 			}
 		}
 	}
+
+	//Mat watch;
+	//visualizeDepthMap(out, watch, baseLine, focalLength);
 }
 
 void combine(Mat& out, const Mat& depthMap1, const Mat& depthMap2)
