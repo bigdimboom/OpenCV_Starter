@@ -13,10 +13,14 @@
 #define FOCAL_LENGTH 1247 // pixels
 #define UNIT_BASELINE 40  // millimeters
 
-#define TYPE_SIZE CV_8U
-#define MAX_COLOR UCHAR_MAX
-typedef uchar ImageType;
+#define DEPTH_TYPE_SIZE CV_64F
+#define DEPTH_INFINITY 9999999
+typedef double DepthType;
 
+#define IMAGE_TYPE_SIZE CV_8U
+#define MAX_COLOR 255
+#define MIN_COLOR 0
+typedef uchar ImageType;
 
 using namespace std;
 using namespace cv;
@@ -38,22 +42,41 @@ void showImage(Mat& img, string path)
 	imshow(path, img);
 }
 
-// pretend disMap is the world center;
-// then make "out" the world center;
-// then transfer 3d points to the "out" system.
-void generateDepth(Mat& out,
-				   const Mat& dispMap,
-				   double dispMapPosX, // (0,0,0) is the "out" map position; dispMap position should be compare to it.
-				   int baseLine,
-				   int focalLength)
+void visualizeDepthMap(Mat& in, Mat& out, int baseLine, int focalLength)
 {
-	out = Mat::zeros(dispMap.rows, dispMap.cols, TYPE_SIZE);
+	out = Mat::zeros(in.rows, in.cols, IMAGE_TYPE_SIZE);
 
 	for (int r = 0; r < out.rows; ++r)
 	{
 		for (int c = 0; c < out.cols; ++c)
 		{
-			out.at<ImageType>(r, c) = MAX_COLOR;
+			DepthType depth = in.at<DepthType>(r, c);
+			depth = (DepthType)(focalLength * baseLine) / depth;
+			depth = depth * 3;
+			depth = depth < MIN_COLOR ? MIN_COLOR : depth;
+			depth = depth > MAX_COLOR ? MAX_COLOR : depth;
+			out.at<ImageType>(r, c) = (ImageType)depth;
+		}
+	}
+
+}
+
+// pretend disMap is the world center;
+// then make "out" the world center;
+// then project 3d points to the "out" view 3  image 2D system.
+void generateDepth(Mat& out, // view 3
+				   const Mat& dispMap,
+				   int transformX, // (0,0,0) is the "out" map position; dispMap position should be compare to it.
+				   int baseLine,
+				   int focalLength)
+{
+	out = Mat::zeros(dispMap.rows, dispMap.cols, DEPTH_TYPE_SIZE);
+
+	for (int r = 0; r < out.rows; ++r)
+	{
+		for (int c = 0; c < out.cols; ++c)
+		{
+			out.at<DepthType>(r, c) = DEPTH_INFINITY;
 		}
 	}
 
@@ -61,21 +84,28 @@ void generateDepth(Mat& out,
 	{
 		for (int c = 0; c < dispMap.cols; ++c)
 		{
-			double disp = dispMap.at<uchar>(r, c) / 3.0;
+			double disp = (double)dispMap.at<uchar>(r, c) / 3.0;
+
 			if (disp == 0)
 			{
-				continue;
+				continue; // throw away disparity == 0
 			}
-			double depthZ = ((double)focalLength * (double)baseLine / disp);
-			double u = (double)c - (double)dispMap.cols / 2.0; // u is the x coodinate for the disparity map.
-			double x = (u * depthZ / focalLength) + dispMapPosX; // x is the x coodinate in view 3 camera system.
-			// y in 3D will not change.
-			double uu = x * focalLength / depthZ; // the x of view 3 in 2D
-			int newC = (int)(round(uu) + (double)dispMap.cols / 2.0);
 
-			if (newC > 0 && newC < out.cols)
+			double depthZ = (double)(focalLength * baseLine) / disp; // formula: Z = fb/d.
+			double u = (double)c - (double)dispMap.cols/ 2.0; // origin is at the center of the image.
+			double x = u * depthZ / (double)focalLength; // the x in real world 3D system (x,yz).
+			double camX = x + (double)transformX; // x position in the view 3 camera. (from input map postion to view 3).
+			int newC = (int) (round(camX * (double)(focalLength) / depthZ 
+								+ (double)dispMap.cols / 2.0)
+							 ); // project 3d points to 2D image system of View 3.
+			// move horizontally; therefore, y values do not change.
+
+			if (newC >= 0 && newC < out.cols)
 			{
-				out.at<ImageType>(r, newC) = (ImageType)(round((double)focalLength * (double)baseLine / depthZ) * 3.0);
+				if (depthZ < out.at<DepthType>(r, newC))
+				{
+					out.at<DepthType>(r, newC) = depthZ;
+				}
 			}
 		}
 	}
@@ -86,15 +116,15 @@ void combine(Mat& out, const Mat& depthMap1, const Mat& depthMap2)
 	assert(depthMap1.cols == depthMap2.cols
 		   && depthMap1.rows == depthMap2.rows);
 
-	out = Mat::zeros(depthMap1.rows, depthMap1.cols, TYPE_SIZE);
+	out = Mat::zeros(depthMap1.rows, depthMap1.cols, DEPTH_TYPE_SIZE);
 
 	for (int r = 0; r < out.rows; ++r)
 	{
 		for (int c = 0; c < out.cols; ++c)
 		{
-			ImageType one = depthMap1.at<ImageType>(r, c);
-			ImageType two = depthMap2.at<ImageType>(r, c);
-			out.at<ImageType>(r, c) = one <= two ? one : two;
+			DepthType one = depthMap1.at<DepthType>(r, c);
+			DepthType two = depthMap2.at<DepthType>(r, c);
+			out.at<DepthType>(r, c) = one < two ? one : two;
 		}
 	}
 }
@@ -132,16 +162,21 @@ int main(int argc, char** argv)
 		return EXIT_FAILURE;
 	}
 
-	// TODO: main steps
+	// TODO: main steps for (a)
 	// STEP 1: Generate depth for view 3 from ground truth view 1 and view 5
-	Mat depthMap1, depthMap2, theDepth;
-	generateDepth(depthMap1, img[disp1], -(UNIT_BASELINE * 2), UNIT_BASELINE, FOCAL_LENGTH);
-	generateDepth(depthMap2, img[disp5], UNIT_BASELINE * 2, UNIT_BASELINE, FOCAL_LENGTH);
+	Mat depthMap1, depthMap2, theDepth, depthImage;
+	generateDepth(depthMap1, img[disp1], -2 * UNIT_BASELINE, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
+	generateDepth(depthMap2, img[disp5],  2 * UNIT_BASELINE, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
+	// STEP 2: project two depth maps to view3, pick the value that is closer to camera.
 	combine(theDepth, depthMap1, depthMap2);
+	visualizeDepthMap(theDepth, depthImage, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
 
-	Mat test1 = img[disp1];
-	Mat test2 = img[disp5];
-	showImage(theDepth, depthMapMix);
+	showImage(depthImage, depthMapMix);
+
+	// TODO: main steps for (b)
+	// STEP 1: calculate 3 disperity maps.
+
+
 
 	//for (auto i = img.begin(); i != img.end(); ++i)
 	//{
@@ -160,7 +195,7 @@ int main(int argc, char** argv)
 	{
 		// Write Output
 		bool succ = false;
-		succ = imwrite(depthMapMix, theDepth);
+		succ = imwrite(depthMapMix, depthImage);
 		if (!succ)
 		{
 			printf(" Image writing fialed \n ");
