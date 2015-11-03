@@ -42,7 +42,7 @@ void showImage(Mat& img, string path)
 	imshow(path, img);
 }
 
-void visualizeDepthMap(Mat& in, Mat& out, int baseLine, int focalLength)
+void visualizeDepthMap(Mat& in, Mat& out, int baseLine, int focalLength, double enhanceRate)
 {
 	out = Mat::zeros(in.rows, in.cols, IMAGE_TYPE_SIZE);
 
@@ -52,7 +52,7 @@ void visualizeDepthMap(Mat& in, Mat& out, int baseLine, int focalLength)
 		{
 			DepthType depth = in.at<DepthType>(r, c);
 			depth = (DepthType)(focalLength * baseLine) / depth;
-			depth = depth * 3;
+			depth = depth * enhanceRate;
 			depth = depth < MIN_COLOR ? MIN_COLOR : depth;
 			depth = depth > MAX_COLOR ? MAX_COLOR : depth;
 			out.at<ImageType>(r, c) = (ImageType)depth;
@@ -94,12 +94,12 @@ void generateDepth(Mat& out, // view 3
 			}
 
 			double depthZ = (double)(focalLength * baseLine) / disp; // formula: Z = fb/d.
-			double u = (double)c - (double)dispMap.cols/ 2.0; // origin is at the center of the image.
+			double u = (double)c - (double)dispMap.cols / 2.0; // origin is at the center of the image.
 			double x = u * depthZ / (double)focalLength; // the x in real world 3D system (x,yz).
 			double camX = x + (double)transformX; // x position in the view 3 camera. (from input map postion to view 3).
-			int newC = (int) (round(camX * (double)(focalLength) / depthZ 
-								+ (double)dispMap.cols / 2.0)
-							 ); // project 3d points to uv(2D) coordinate of View 3.
+			int newC = (int)(round(camX * (double)(focalLength) / depthZ
+				+ (double)dispMap.cols / 2.0)
+				); // project 3d points to uv(2D) coordinate of View 3.
 			// move horizontally; therefore, y values do not change.
 
 			if (newC >= 0 && newC < out.cols)
@@ -226,6 +226,38 @@ bool SAD(Mat& inputLeft, Mat& inputRight, Mat& output, int minDisparity, int max
 	return true;
 }
 
+float computeErrorRate(Mat& sample, Mat& toBeTest, double levelOff = 1.0)
+{
+	int count = 0;
+	for (int r = 0; r < toBeTest.rows && r < sample.rows; ++r)
+	{
+		for (int c = 0; c < toBeTest.cols && c < sample.cols; ++c)
+		{
+			double value = sample.at<DepthType>(r, c);
+			double testVal = toBeTest.at<DepthType>(r, c);
+			if ((testVal < value - levelOff || testVal > value + levelOff))
+			{
+				++count;
+			}
+		}
+	}
+
+	return  (float(count) / ((float)sample.rows * sample.cols));
+}
+
+bool generateReport(string filePath, float errorRate)
+{
+	ofstream report;
+	report.open(filePath);
+	if (!report.is_open() || report.fail())
+	{
+		return false;
+	}
+	report << "The error is: " << errorRate << endl;
+	report.close();
+	return true;
+}
+
 int main(int argc, char** argv)
 {
 	string disp1 = "images/disp1.pgm";
@@ -240,6 +272,7 @@ int main(int argc, char** argv)
 
 	string depthMapMixA = "report/depthMap_mix_for_a.bmp";
 	string depthMapMixB = "report/depthMap_mix_for_b.bmp";
+	string report = "report/report.txt";
 
 	//Read Img
 	map<string, Mat> img;
@@ -270,7 +303,7 @@ int main(int argc, char** argv)
 	combine(theDepthMap, depthMap1, depthMap2);
 
 	// STEP 3: visualize the depth map
-	visualizeDepthMap(theDepthMap, depthImage1, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH);
+	visualizeDepthMap(theDepthMap, depthImage1, UNIT_BASELINE * (5 - 1), FOCAL_LENGTH, 3.0);
 	showImage(depthImage1, depthMapMixA);
 
 	// TODO: main steps for (b)
@@ -294,11 +327,11 @@ int main(int argc, char** argv)
 
 	// STEP 2: calculate 3 disparity maps.
 	vector<Mat> dispMaps;
-	for (int i = 1; i < rankMaps.size(); i = i+2)
+	for (int i = 1; i < rankMaps.size(); i = i + 2)
 	{
 		Mat tmp;
-		extractSucc = SAD(rankMaps[i], rankMaps[i + 1], tmp, 0, 22, 9); 
-			// Why 0 - 22? Because view 1-5 disparity is 0 - 85.
+		extractSucc = SAD(rankMaps[i], rankMaps[i + 1], tmp, 0, 22, 9);
+		// Why 0 - 22? Because disparity between view 1 - 5 is 0 - 85.
 		if (!extractSucc)
 		{
 			std::cerr << "disparity compute filed\n";
@@ -314,20 +347,20 @@ int main(int argc, char** argv)
 	// STEP 3: Generate 3 depthMap for peoblem 2 and combine them to one.
 	Mat depth1, depth2, depth3, theDepth, depthImage2;
 	generateDepth(depth1, dispMaps[0], -2 * UNIT_BASELINE, UNIT_BASELINE, FOCAL_LENGTH);
-	generateDepth(depth2, dispMaps[1],  0,                 UNIT_BASELINE, FOCAL_LENGTH);
-	generateDepth(depth3, dispMaps[2],  2 * UNIT_BASELINE, UNIT_BASELINE, FOCAL_LENGTH);
+	generateDepth(depth2, dispMaps[1], 0, UNIT_BASELINE, FOCAL_LENGTH);
+	generateDepth(depth3, dispMaps[2], 2 * UNIT_BASELINE, UNIT_BASELINE, FOCAL_LENGTH);
 	Mat tmpDepthMap;
 	combine(tmpDepthMap, depth1, depth2);
 	combine(theDepth, tmpDepthMap, depth3);
 
 	// STEP 4: visualize the depthMap for problem 3.
-	visualizeDepthMap(theDepth, depthImage2, UNIT_BASELINE, FOCAL_LENGTH);
+	visualizeDepthMap(theDepth, depthImage2, UNIT_BASELINE, FOCAL_LENGTH, 85.0 / 22.0 * 3.0);
 	showImage(depthImage2, depthMapMixB);
 
 	// STEP 5: calculate error rate theDepth :: theDepthMap
-
-
-
+	float errorRate = computeErrorRate(theDepthMap, theDepth);
+	//float errorRate = computeErrorRate(depthImage1, depthImage2);
+	cout << "Error rate is: " << errorRate << endl;
 
 
 	//for (auto i = img.begin(); i != img.end(); ++i)
@@ -348,6 +381,7 @@ int main(int argc, char** argv)
 		bool succ = false;
 		succ = imwrite(depthMapMixA, depthImage1);
 		succ = imwrite(depthMapMixB, depthImage2);
+		succ = generateReport(report, errorRate);
 		if (!succ)
 		{
 			printf(" Image writing fialed \n ");
