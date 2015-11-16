@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="binocular_3d_vision_reconstruction.cpp">
+    <ClCompile Include="3d_model_reconstruction.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
