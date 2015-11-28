@@ -129,7 +129,7 @@ void calculateNormals(vector<Point3f>& verts, vector<int>& idx, vector<Point3f>&
 	delete[] normalsPtr;
 }
 
-bool writePLY(string outPath, vector<Point3f>& verts, vector<Point3f>& normals)
+bool writePLY(string outPath, vector<Point3f>& verts, vector<Point3f>& normals, vector<int>& indices)
 {
 	ofstream outFile(outPath);
 	if (!outFile.is_open() || outFile.fail())
@@ -138,18 +138,18 @@ bool writePLY(string outPath, vector<Point3f>& verts, vector<Point3f>& normals)
 		return false;
 	}
 
-	outFile << "ply" << endl;
-	outFile << "format ascii 1.0" << endl;
-	outFile << "comment" << endl;
-	outFile << "element vertex " << verts.size() << endl;
-	outFile << "property float x" << endl;
-	outFile << "property float y" << endl;
-	outFile << "property float z" << endl;
-	outFile << "property float nx" << endl;
-	outFile << "property float ny" << endl;
-	outFile << "property float nz" << endl;
-	outFile << "element face 0" << endl;
-	outFile << "end_header" << endl;
+	//outFile << "ply" << endl;
+	//outFile << "format ascii 1.0" << endl;
+	//outFile << "comment" << endl;
+	//outFile << "element vertex " << verts.size() << endl;
+	//outFile << "property float x" << endl;
+	//outFile << "property float y" << endl;
+	//outFile << "property float z" << endl;
+	//outFile << "property float nx" << endl;
+	//outFile << "property float ny" << endl;
+	//outFile << "property float nz" << endl;
+	//outFile << "element face 0" << endl;
+	//outFile << "end_header" << endl;
 
 	////
 	// Points
@@ -183,7 +183,7 @@ int main(int argc, char** argv)
 
 	readVertAndIdxsFromPLY("gargoyle.ply", verts, indices);
 	calculateNormals(verts, indices, avgNormals);
-	writePLY("normals_result.ply", verts, avgNormals);
+	writePLY("normals_result.txt", verts, avgNormals, indices);
 
 	std::cout << "Press \"s\" to save, \"esc\" to close the program.\n";
 	int key = waitKey(0);
