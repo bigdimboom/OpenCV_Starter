@@ -79,7 +79,7 @@ void calculateNormals(vector<Point3f>& verts, vector<int>& idx, vector<Point3f>&
 
 	vector<Point3f>* normalsPtr = new vector<Point3f>[vertsSize];
 
-	for (int i = 0; i < indexSize - 3; i += 3)
+	for (int i = 0; i < indexSize - 4; i += 4)
 	{
 		Point3f a = verts[idx[i]];
 		Point3f b = verts[idx[i + 1]];
@@ -93,6 +93,7 @@ void calculateNormals(vector<Point3f>& verts, vector<int>& idx, vector<Point3f>&
 		normalsPtr[idx[i]].push_back(normal);
 		normalsPtr[idx[i + 1]].push_back(normal);
 		normalsPtr[idx[i + 2]].push_back(normal);
+		normalsPtr[idx[i + 3]].push_back(normal);
 	}
 
 	for (int i = 0; i < vertsSize; ++i)
