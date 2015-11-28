@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="3d_model_reconstruction.cpp">
+    <ClCompile Include="calculate_normals.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
