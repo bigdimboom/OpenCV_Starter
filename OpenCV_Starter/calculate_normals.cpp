@@ -81,16 +81,17 @@ void calculateNormals(vector<Point3f>& verts, vector<int>& idx, vector<Point3f>&
 
 	for (int i = 0; i < indexSize - 4; i += 4)
 	{
-		Point3f a = verts[idx[i]];
-		Point3f b = verts[idx[i + 1]];
-		Point3f c = verts[idx[i + 2]];
+		// throw away the first one because it is entry point of a table.
+		Point3f a = verts[idx[i + 1]];
+		Point3f b = verts[idx[i + 2]];
+		Point3f c = verts[idx[i + 3]];
 
 		Point3f vec1 = b - a;
 		Point3f vec2 = c - b;
 
-		Point3f normal = vec1.cross(vec2); // un-nomalized
+		// the indices in ply is clcokwised, so make it counter-clockwise.
+		Point3f normal = vec2.cross(vec1); // un-nomalized value
 
-		normalsPtr[idx[i]].push_back(normal);
 		normalsPtr[idx[i + 1]].push_back(normal);
 		normalsPtr[idx[i + 2]].push_back(normal);
 		normalsPtr[idx[i + 3]].push_back(normal);
