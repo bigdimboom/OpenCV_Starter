@@ -15,7 +15,7 @@
     </Filter>
   </ItemGroup>
   <ItemGroup>
-    <ClCompile Include="calculate_normals.cpp">
+    <ClCompile Include="3dReconstructionFromDepthMap.cpp">
       <Filter>Source Files</Filter>
     </ClCompile>
   </ItemGroup>
