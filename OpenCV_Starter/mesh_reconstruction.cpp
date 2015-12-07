@@ -28,7 +28,6 @@ enum SignCount
 };
 
 
-
 bool loadImage(Mat& img, string path)
 {
 	img = imread(path, -1);
@@ -83,13 +82,13 @@ void parsePoints(string path, vector<Point3f>& pointCloud)
 	fin.close(); // Close that file!
 }
 
-void readVerts(string prefix, vector<Point3f>& container)
+void readBatchVerts(string prefix, vector<Point3f>* containers, int size)
 {
 	string tmp = "";
 	for (int i = 1; i <= 4; ++i)
 	{
 		tmp = prefix + to_string(i) + ".ply";
-		parsePoints(tmp, container);
+		parsePoints(tmp, containers[i-1]);
 		tmp.clear();
 	}
 }
@@ -104,6 +103,14 @@ void knnSearch(const vector<Point3f>& pointCloud,
 	flann::KDTreeIndexParams indexParams;
 	flann::Index kdTree(query, indexParams, cvflann::FLANN_DIST_EUCLIDEAN);
 	kdTree.knnSearch(query, indices, dists, KNN);
+}
+
+void knnBatchSearch(vector<Point3f>* points, Mat* indices, Mat* dists, int size)
+{
+	for (int i = 0; i < size; ++i)
+	{
+		knnSearch(points[i], indices[i], dists[i]);
+	}
 }
 
 void GenerateNormals(vector<Point3f>& normals, vector<Point3f>& points, Mat& idxs, Mat& dists)
@@ -205,36 +212,73 @@ void GenerateNormals(vector<Point3f>& normals, vector<Point3f>& points, Mat& idx
 	}
 }
 
+void GenBatchNormals(vector<Point3f>* normals, vector<Point3f>* points, Mat* idxs, Mat* dists, int size)
+{
+	for (int i = 0; i < size; ++i)
+	{
+		GenerateNormals(normals[i], points[i], idxs[i], dists[i]);
+	}
+}
+
+void printResult(vector<Point3f>& points, vector<Point3f>& normals, string fileName)
+{
+	ofstream outFile(fileName);
+	if (!outFile.is_open() || outFile.fail())
+	{
+		cerr << "Error opening output file: " << fileName << "!" << endl;
+	}
+
+	for (int pi = 0; pi < points.size(); ++pi)
+	{
+		Point3d point = points[pi];
+		Point3d normal = normals[pi];
+		// Points
+		outFile << point.x << " ";
+		outFile << point.y << " ";
+		outFile << point.z << " ";
+		// normals
+		outFile << normal.x << " ";
+		outFile << normal.y << " ";
+		outFile << normal.z << " ";
+		// end one line
+		outFile << endl;
+	}
+
+	outFile.close();
+}
+
 int main(int argc, char** argv)
 {
-	Point3f vec(1, 2, 3);
-
-	auto ret = vec.dot(Point3f(1.0f, 0.0, 0.0f));
-
-	float denom = vec.x * vec.x + vec.y* vec.y + vec.z * vec.z;
-	Mat vecMat(vec);
-	Mat vecMatTranspose = vecMat.t();
-	Mat result = 10 * (vecMat * vecMatTranspose) * (1 / denom);
-
 	//TODO : Q1
 	// STEP 1: Get K Nearest Points (K == 50)
+	vector<Point3f> apple[4], banana[4], lemon[4];
 	string applePrefix = "hw7_plys/apple_";
 	string bananaPrefix = "hw7_plys/banana_";
 	string lemonPrefix = "hw7_plys/lemon_";
-	vector<Point3f> apple, banana, lemon;
-	readVerts(applePrefix, apple);
-	readVerts(bananaPrefix, banana);
-	readVerts(lemonPrefix, lemon);
-	Mat appleIdxs, appleDists;
-	knnSearch(apple, appleIdxs, appleDists);
-	//Mat bananaIdxs, bananaDists;
-	//knnSearch(banana, bananaIdxs, bananaDists);
-	//Mat lemonIdxs, lemonDists;
-	//knnSearch(lemon, lemonIdxs, lemonDists);
+	readBatchVerts(applePrefix, apple, 4);
+	readBatchVerts(bananaPrefix, banana, 4);
+	readBatchVerts(lemonPrefix, lemon, 4);
+
+	Mat appleIdxs[4], appleDists[4];
+	knnBatchSearch(apple, appleIdxs, appleDists, 4);
+	Mat bananaIdxs[4], bananaDists[4];
+	knnBatchSearch(banana, bananaIdxs, bananaDists, 4);
+	Mat lemonIdxs[4], lemonDists[4];
+	knnBatchSearch(lemon, lemonIdxs, lemonDists, 4);
 
 	// STEP 2: USE FORMULA
-	vector<Point3f> appleNormals, bananaNormals, lemonNormals;
-	GenerateNormals(appleNormals, apple, appleIdxs, appleDists);
+	vector<Point3f> appleNormals[4], bananaNormals[4], lemonNormals[4];
+	GenBatchNormals(appleNormals, apple, appleIdxs, appleDists, 4);
+	GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, 4);
+	GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, 4);
+	printResult(apple[0], appleNormals[0], "apple_1_result.txt");
+	printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
+	printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
+
+
+	// TODO: Q2
+
+
 
 
 	return EXIT_SUCCESS;
