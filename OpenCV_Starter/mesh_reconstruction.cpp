@@ -9,12 +9,16 @@
 #include <opencv2/imgproc/imgproc.hpp>     // image process lib opencv
 #include <assert.h>						   // assert(...)
 #include <opencv2/flann.hpp>
+#include <random>
 
 using namespace std;
 using namespace cv;
 
 #define KNN 50 // the number of k nearest points
-#define SIGMA 20 // mm
+#define SIGMA 20 // scale : mm
+#define NUM_OF_BINS 11 // bins: 11 x 11
+#define BIN_SIZE 3 // 3 x 3 mm
+
 
 enum SignCount
 {
@@ -105,7 +109,10 @@ void knnSearch(const vector<Point3f>& pointCloud,
 	kdTree.knnSearch(query, indices, dists, KNN);
 }
 
-void knnBatchSearch(vector<Point3f>* points, Mat* indices, Mat* dists, int size)
+void knnBatchSearch(vector<Point3f>* points, 
+					Mat* indices, 
+					Mat* dists, 
+					int size)
 {
 	for (int i = 0; i < size; ++i)
 	{
@@ -113,7 +120,10 @@ void knnBatchSearch(vector<Point3f>* points, Mat* indices, Mat* dists, int size)
 	}
 }
 
-void GenerateNormals(vector<Point3f>& normals, vector<Point3f>& points, Mat& idxs, Mat& dists)
+void GenerateNormals(vector<Point3f>& normals, 
+					 vector<Point3f>& points, 
+					 Mat& idxs, 
+					 Mat& dists)
 {
 	float factor = 1.0f / (2 * SIGMA * SIGMA);
 
@@ -137,7 +147,7 @@ void GenerateNormals(vector<Point3f>& normals, vector<Point3f>& points, Mat& idx
 
 			float d = dists.at<float>(r, c);
 			float weight = exp(-(d*d) * factor);
-			float denom = vec.x * vec.x + vec.y* vec.y + vec.z * vec.z;
+			float denom = vec.dot(vec);
 			vec = vec / sqrt(denom); // normalize
 			Mat vecMat(vec);
 			Mat vecMatTranspose = vecMat.t();
@@ -208,11 +218,18 @@ void GenerateNormals(vector<Point3f>& normals, vector<Point3f>& points, Mat& idx
 		{
 			finalNormal.z = -finalNormal.z;
 		}
+
+		finalNormal = finalNormal / (sqrt(finalNormal.dot(finalNormal)));
+
 		normals.push_back(finalNormal);
 	}
 }
 
-void GenBatchNormals(vector<Point3f>* normals, vector<Point3f>* points, Mat* idxs, Mat* dists, int size)
+void GenBatchNormals(vector<Point3f>* normals, 
+					 vector<Point3f>* points, 
+					 Mat* idxs, 
+					 Mat* dists, 
+					 int size)
 {
 	for (int i = 0; i < size; ++i)
 	{
@@ -220,7 +237,9 @@ void GenBatchNormals(vector<Point3f>* normals, vector<Point3f>* points, Mat* idx
 	}
 }
 
-void printResult(vector<Point3f>& points, vector<Point3f>& normals, string fileName)
+void printResult(vector<Point3f>& points, 
+				 vector<Point3f>& normals, 
+				 string fileName)
 {
 	ofstream outFile(fileName);
 	if (!outFile.is_open() || outFile.fail())
@@ -247,6 +266,52 @@ void printResult(vector<Point3f>& points, vector<Point3f>& normals, string fileN
 	outFile.close();
 }
 
+void imageSpinning(vector<Point3f>& points, 
+				   vector<Point3f>& normals, 
+				   int numOfSelected, 
+				   map<int, Mat>& images)
+{
+	default_random_engine generator;
+	uniform_int_distribution<int> distribution(0, (int)points.size() - 1);
+	for (int count = 0; count < numOfSelected; ++count)
+	{
+		int selected = distribution(generator);
+
+		auto hit = images.find(selected);
+
+		if (hit != images.end())
+		{
+			continue;
+		}
+
+		Point3f pt = points[selected];
+		Point3f n = normals[selected];
+		int size = BIN_SIZE * NUM_OF_BINS;
+		images[selected] = Mat::zeros(size + 1, size + 1, CV_8U);
+		for (int i = 0; i < points.size(); ++i)
+		{
+			// Project to 2D : from cartesian to cylindrical
+			Point3f target = points[i];
+			Point3f vec = target - pt; // the slop of the rect triangle
+			float newY = n.dot(vec); // beta
+			float newX = sqrt(vec.dot(vec) - newY * newY); // alpha
+
+			// translate to coresponding image position
+			int y = abs((int)(floor(size * 0.5f - newY)));
+			int x = abs((int)(floor(size * 0.5f - newX)));
+
+			if (x <= size && y <= size)
+			{
+				++images[selected].at<uchar>(y, x);
+			}
+		}
+		//Mat tmp = images[selected];
+		//bitwise_not(tmp, tmp);
+		// OR: Mat invSrc =  cv::Scalar::all(255) - src;
+		//equalizeHist(tmp, tmp);
+	}
+}
+
 int main(int argc, char** argv)
 {
 	//TODO : Q1
@@ -261,24 +326,24 @@ int main(int argc, char** argv)
 
 	Mat appleIdxs[4], appleDists[4];
 	knnBatchSearch(apple, appleIdxs, appleDists, 4);
-	Mat bananaIdxs[4], bananaDists[4];
-	knnBatchSearch(banana, bananaIdxs, bananaDists, 4);
-	Mat lemonIdxs[4], lemonDists[4];
-	knnBatchSearch(lemon, lemonIdxs, lemonDists, 4);
+	//Mat bananaIdxs[4], bananaDists[4];
+	//knnBatchSearch(banana, bananaIdxs, bananaDists, 4);
+	//Mat lemonIdxs[4], lemonDists[4];
+	//knnBatchSearch(lemon, lemonIdxs, lemonDists, 4);
 
 	// STEP 2: USE FORMULA
 	vector<Point3f> appleNormals[4], bananaNormals[4], lemonNormals[4];
 	GenBatchNormals(appleNormals, apple, appleIdxs, appleDists, 4);
-	GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, 4);
-	GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, 4);
-	printResult(apple[0], appleNormals[0], "apple_1_result.txt");
-	printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
-	printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
+	//GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, 4);
+	//GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, 4);
+	//printResult(apple[0], appleNormals[0], "apple_1_result.txt");
+	//printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
+	//printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
 
 
-	// TODO: Q2
-
-
+	// TODO: Q2 "Spinning Image Recognition"
+	map<int, Mat> images[2];
+	imageSpinning(apple[0], appleNormals[0], 30, images[0]);
 
 
 	return EXIT_SUCCESS;
