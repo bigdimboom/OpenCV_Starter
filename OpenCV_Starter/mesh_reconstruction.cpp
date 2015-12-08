@@ -92,7 +92,7 @@ void readBatchVerts(string prefix, vector<Point3f>* containers, int size)
 	for (int i = 1; i <= 4; ++i)
 	{
 		tmp = prefix + to_string(i) + ".ply";
-		parsePoints(tmp, containers[i-1]);
+		parsePoints(tmp, containers[i - 1]);
 		tmp.clear();
 	}
 }
@@ -109,9 +109,9 @@ void knnSearch(const vector<Point3f>& pointCloud,
 	kdTree.knnSearch(query, indices, dists, KNN);
 }
 
-void knnBatchSearch(vector<Point3f>* points, 
-					Mat* indices, 
-					Mat* dists, 
+void knnBatchSearch(vector<Point3f>* points,
+					Mat* indices,
+					Mat* dists,
 					int size)
 {
 	for (int i = 0; i < size; ++i)
@@ -120,9 +120,9 @@ void knnBatchSearch(vector<Point3f>* points,
 	}
 }
 
-void GenerateNormals(vector<Point3f>& normals, 
-					 vector<Point3f>& points, 
-					 Mat& idxs, 
+void GenerateNormals(vector<Point3f>& normals,
+					 vector<Point3f>& points,
+					 Mat& idxs,
 					 Mat& dists)
 {
 	float factor = 1.0f / (2 * SIGMA * SIGMA);
@@ -187,7 +187,7 @@ void GenerateNormals(vector<Point3f>& normals,
 		Mat eigenValues;
 		Mat eigenVectors;
 		bool success = eigen(covarMat, eigenValues, eigenVectors);
-		float smallestEV = eigenValues.at<float>(0,0);
+		float smallestEV = eigenValues.at<float>(0, 0);
 		int whichOne = 0;
 		for (int rr = 1; rr < eigenValues.rows; ++rr)
 		{
@@ -225,10 +225,10 @@ void GenerateNormals(vector<Point3f>& normals,
 	}
 }
 
-void GenBatchNormals(vector<Point3f>* normals, 
-					 vector<Point3f>* points, 
-					 Mat* idxs, 
-					 Mat* dists, 
+void GenBatchNormals(vector<Point3f>* normals,
+					 vector<Point3f>* points,
+					 Mat* idxs,
+					 Mat* dists,
 					 int size)
 {
 	for (int i = 0; i < size; ++i)
@@ -237,8 +237,8 @@ void GenBatchNormals(vector<Point3f>* normals,
 	}
 }
 
-void printResult(vector<Point3f>& points, 
-				 vector<Point3f>& normals, 
+void printResult(vector<Point3f>& points,
+				 vector<Point3f>& normals,
 				 string fileName)
 {
 	ofstream outFile(fileName);
@@ -266,9 +266,9 @@ void printResult(vector<Point3f>& points,
 	outFile.close();
 }
 
-void imageSpinning(vector<Point3f>& points, 
-				   vector<Point3f>& normals, 
-				   int numOfSelected, 
+void imageSpinning(vector<Point3f>& points,
+				   vector<Point3f>& normals,
+				   int numOfSelected,
 				   map<int, Mat>& images)
 {
 	default_random_engine generator;
@@ -312,6 +312,27 @@ void imageSpinning(vector<Point3f>& points,
 	}
 }
 
+void printImgs(map<int, Mat>& images, vector<Point3f>& point, string tag)
+{
+	for (const auto & img : images)
+	{
+		int index = img.first;
+		Mat theImg = img.second.clone();
+		bitwise_not(theImg, theImg);
+		equalizeHist(theImg, theImg);
+		bool succ = imwrite("image_output/" + tag + "_"
+							+ "cood_"
+							+ to_string(point[index].x) + "_"
+							+ to_string(point[index].y) + "_"
+							+ to_string(point[index].z) + ".bmp"
+							, theImg);
+		if (!succ)
+		{
+			printf(" Image writing fialed \n ");
+		}
+	}
+}
+
 int main(int argc, char** argv)
 {
 	//TODO : Q1
@@ -326,24 +347,36 @@ int main(int argc, char** argv)
 
 	Mat appleIdxs[4], appleDists[4];
 	knnBatchSearch(apple, appleIdxs, appleDists, 4);
-	//Mat bananaIdxs[4], bananaDists[4];
-	//knnBatchSearch(banana, bananaIdxs, bananaDists, 4);
-	//Mat lemonIdxs[4], lemonDists[4];
-	//knnBatchSearch(lemon, lemonIdxs, lemonDists, 4);
+	Mat bananaIdxs[4], bananaDists[4];
+	knnBatchSearch(banana, bananaIdxs, bananaDists, 4);
+	Mat lemonIdxs[4], lemonDists[4];
+	knnBatchSearch(lemon, lemonIdxs, lemonDists, 4);
 
 	// STEP 2: USE FORMULA
 	vector<Point3f> appleNormals[4], bananaNormals[4], lemonNormals[4];
 	GenBatchNormals(appleNormals, apple, appleIdxs, appleDists, 4);
-	//GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, 4);
-	//GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, 4);
+	GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, 4);
+	GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, 4);
 	//printResult(apple[0], appleNormals[0], "apple_1_result.txt");
 	//printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
 	//printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
 
 
 	// TODO: Q2 "Spinning Image Recognition"
-	map<int, Mat> images[2];
-	imageSpinning(apple[0], appleNormals[0], 30, images[0]);
+	map<int, Mat> appleImgs[4], bananaImgs[4], lemonImgs[4];
+	for (int i = 0; i < 4; ++i)
+	{
+		imageSpinning(apple[i], appleNormals[i], 30, appleImgs[i]);
+		imageSpinning(banana[i], bananaNormals[i], 30, bananaImgs[i]);
+		imageSpinning(lemon[i], lemonNormals[i], 30, lemonImgs[i]);
+		//printImgs(appleImgs[i], apple[i], "apple_" + to_string(i + 1));
+		//printImgs(bananaImgs[i], banana[i], "banana_" + to_string(i + 1));
+		//printImgs(lemonImgs[i], lemon[i], "lemon_" + to_string(i + 1));
+	}
+
+	// TODO: Q3 "Train data and classify data"
+
+
 
 
 	return EXIT_SUCCESS;
