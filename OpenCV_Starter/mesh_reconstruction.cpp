@@ -266,7 +266,30 @@ void printResult(vector<Point3f>& points,
 	outFile.close();
 }
 
-void imageSpinning(vector<Point3f>& points,
+void spinningImage(const Point3f & point, const Point3f& normal, vector<Point3f>& pointCloud, Mat& image)
+{
+	int size = BIN_SIZE * NUM_OF_BINS;
+	image = Mat::zeros(size + 1, size + 1, CV_8U);
+	for (int i = 0; i < pointCloud.size(); ++i)
+	{
+		// Project to 2D : from cartesian to cylindrical
+		Point3f target = pointCloud[i];
+		Point3f vec = target - point; // the slop of the rect triangle
+		float newY = normal.dot(vec); // beta
+		float newX = sqrt(vec.dot(vec) - newY * newY); // alpha
+
+		// translate to coresponding image position
+		int y = abs((int)(floor(size * 0.5f - newY)));
+		int x = abs((int)(floor(size * 0.5f - newX)));
+
+		if (x <= size && y <= size)
+		{
+			++image.at<uchar>(y, x);
+		}
+	}
+}
+
+void batchSpinningImage(vector<Point3f>& points,
 				   vector<Point3f>& normals,
 				   int numOfSelected,
 				   map<int, Mat>& images)
@@ -286,25 +309,7 @@ void imageSpinning(vector<Point3f>& points,
 
 		Point3f pt = points[selected];
 		Point3f n = normals[selected];
-		int size = BIN_SIZE * NUM_OF_BINS;
-		images[selected] = Mat::zeros(size + 1, size + 1, CV_8U);
-		for (int i = 0; i < points.size(); ++i)
-		{
-			// Project to 2D : from cartesian to cylindrical
-			Point3f target = points[i];
-			Point3f vec = target - pt; // the slop of the rect triangle
-			float newY = n.dot(vec); // beta
-			float newX = sqrt(vec.dot(vec) - newY * newY); // alpha
-
-			// translate to coresponding image position
-			int y = abs((int)(floor(size * 0.5f - newY)));
-			int x = abs((int)(floor(size * 0.5f - newX)));
-
-			if (x <= size && y <= size)
-			{
-				++images[selected].at<uchar>(y, x);
-			}
-		}
+		spinningImage(pt, n, points, images[selected]);
 		//Mat tmp = images[selected];
 		//bitwise_not(tmp, tmp);
 		// OR: Mat invSrc =  cv::Scalar::all(255) - src;
@@ -363,18 +368,19 @@ int main(int argc, char** argv)
 
 
 	// TODO: Q2 "Spinning Image Recognition"
-	map<int, Mat> appleImgs[4], bananaImgs[4], lemonImgs[4];
-	for (int i = 0; i < 4; ++i)
+	map<int, Mat> appleImgs[2], bananaImgs[2], lemonImgs[2];
+	for (int i = 0; i < 2; ++i)
 	{
-		imageSpinning(apple[i], appleNormals[i], 30, appleImgs[i]);
-		imageSpinning(banana[i], bananaNormals[i], 30, bananaImgs[i]);
-		imageSpinning(lemon[i], lemonNormals[i], 30, lemonImgs[i]);
+		batchSpinningImage(apple[i], appleNormals[i], 30, appleImgs[i]);
+		batchSpinningImage(banana[i], bananaNormals[i], 30, bananaImgs[i]);
+		batchSpinningImage(lemon[i], lemonNormals[i], 30, lemonImgs[i]);
 		//printImgs(appleImgs[i], apple[i], "apple_" + to_string(i + 1));
 		//printImgs(bananaImgs[i], banana[i], "banana_" + to_string(i + 1));
 		//printImgs(lemonImgs[i], lemon[i], "lemon_" + to_string(i + 1));
 	}
 
 	// TODO: Q3 "Train data and classify data"
+
 
 
 
