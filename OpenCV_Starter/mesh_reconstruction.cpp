@@ -342,34 +342,36 @@ int main(int argc, char** argv)
 {
 	//TODO : Q1
 	// STEP 1: Get K Nearest Points (K == 50)
-	vector<Point3f> apple[4], banana[4], lemon[4];
+	const int numOfSets = 4; // each data has 4 sets 
+	vector<Point3f> apple[numOfSets], banana[numOfSets], lemon[numOfSets];
 	string applePrefix = "hw7_plys/apple_";
 	string bananaPrefix = "hw7_plys/banana_";
 	string lemonPrefix = "hw7_plys/lemon_";
-	readBatchVerts(applePrefix, apple, 4);
-	readBatchVerts(bananaPrefix, banana, 4);
-	readBatchVerts(lemonPrefix, lemon, 4);
+	readBatchVerts(applePrefix, apple, numOfSets);
+	readBatchVerts(bananaPrefix, banana, numOfSets);
+	readBatchVerts(lemonPrefix, lemon, numOfSets);
 
-	Mat appleIdxs[4], appleDists[4];
-	knnBatchSearch(apple, appleIdxs, appleDists, 4);
-	Mat bananaIdxs[4], bananaDists[4];
-	knnBatchSearch(banana, bananaIdxs, bananaDists, 4);
-	Mat lemonIdxs[4], lemonDists[4];
-	knnBatchSearch(lemon, lemonIdxs, lemonDists, 4);
+	Mat appleIdxs[numOfSets], appleDists[numOfSets];
+	knnBatchSearch(apple, appleIdxs, appleDists, numOfSets);
+	Mat bananaIdxs[numOfSets], bananaDists[numOfSets];
+	knnBatchSearch(banana, bananaIdxs, bananaDists, numOfSets);
+	Mat lemonIdxs[numOfSets], lemonDists[numOfSets];
+	knnBatchSearch(lemon, lemonIdxs, lemonDists, numOfSets);
 
 	// STEP 2: USE FORMULA
-	vector<Point3f> appleNormals[4], bananaNormals[4], lemonNormals[4];
-	GenBatchNormals(appleNormals, apple, appleIdxs, appleDists, 4);
-	GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, 4);
-	GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, 4);
+	vector<Point3f> appleNormals[numOfSets], bananaNormals[numOfSets], lemonNormals[numOfSets];
+	GenBatchNormals(appleNormals, apple, appleIdxs, appleDists, numOfSets);
+	GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, numOfSets);
+	GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, numOfSets);
 	//printResult(apple[0], appleNormals[0], "apple_1_result.txt");
 	//printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
 	//printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
 
 
 	// TODO: Q2 "Spinning Image Recognition"
-	map<int, Mat> appleImgs[2], bananaImgs[2], lemonImgs[2];
-	for (int i = 0; i < 2; ++i)
+	const int numOfPrints = 2;
+	map<int, Mat> appleImgs[numOfPrints], bananaImgs[numOfPrints], lemonImgs[numOfPrints];
+	for (int i = 0; i < numOfPrints; ++i)
 	{
 		batchSpinningImage(apple[i], appleNormals[i], 30, appleImgs[i]);
 		batchSpinningImage(banana[i], bananaNormals[i], 30, bananaImgs[i]);
@@ -380,8 +382,6 @@ int main(int argc, char** argv)
 	}
 
 	// TODO: Q3 "Train data and classify data"
-
-
 
 
 
