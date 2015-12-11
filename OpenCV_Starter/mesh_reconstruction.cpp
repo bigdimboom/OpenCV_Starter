@@ -10,6 +10,7 @@
 #include <assert.h>						   // assert(...)
 #include <opencv2/flann.hpp>
 #include <random>
+#include <limits> // type limits
 
 using namespace std;
 using namespace cv;
@@ -97,17 +98,24 @@ void readBatchVerts(string prefix, vector<Point3f>* containers, int size)
 	}
 }
 
+void buildKDTree(flann::Index& kdtree, const vector<Point3f>& pointCloud)
+{
+	Mat sample = Mat(pointCloud).reshape(1);
+	flann::KDTreeIndexParams indexParams;
+	kdtree.build(sample, indexParams, cvflann::FLANN_DIST_EUCLIDEAN);
+}
 
-void knnSearch(const vector<Point3f>& pointCloud,
+void knnSearch(flann::Index& kdtree,
+			   const vector<Point3f>& pointCloud,
 			   Mat& indices, //(numQueries, k_dimentions, CV_32S);
-			   Mat& dists //(numQueries, k_dimentions, CV_32S);
+			   Mat& dists, //(numQueries, k_dimentions, CV_32S);
+			   int size = KNN
 			   )
 {
 	Mat query = Mat(pointCloud).reshape(1);
-	flann::KDTreeIndexParams indexParams;
-	flann::Index kdTree(query, indexParams, cvflann::FLANN_DIST_EUCLIDEAN);
-	kdTree.knnSearch(query, indices, dists, KNN);
+	kdtree.knnSearch(query, indices, dists, size);
 }
+
 
 void knnBatchSearch(vector<Point3f>* points,
 					Mat* indices,
@@ -116,7 +124,9 @@ void knnBatchSearch(vector<Point3f>* points,
 {
 	for (int i = 0; i < size; ++i)
 	{
-		knnSearch(points[i], indices[i], dists[i]);
+		flann::Index kdtree;
+		buildKDTree(kdtree, points[i]);
+		knnSearch(kdtree, points[i], indices[i], dists[i]);
 	}
 }
 
@@ -266,7 +276,10 @@ void printResult(vector<Point3f>& points,
 	outFile.close();
 }
 
-void spinningImage(const Point3f & point, const Point3f& normal, vector<Point3f>& pointCloud, Mat& image)
+void spinningImage(const Point3f & point,
+				   const Point3f& normal,
+				   vector<Point3f>& pointCloud,
+				   Mat& image)
 {
 	int size = BIN_SIZE * NUM_OF_BINS;
 	image = Mat::zeros(size + 1, size + 1, CV_8U);
@@ -290,9 +303,9 @@ void spinningImage(const Point3f & point, const Point3f& normal, vector<Point3f>
 }
 
 void batchSpinningImage(vector<Point3f>& points,
-				   vector<Point3f>& normals,
-				   int numOfSelected,
-				   map<int, Mat>& images)
+						vector<Point3f>& normals,
+						int numOfSelected,
+						map<int, Mat>& images)
 {
 	default_random_engine generator;
 	uniform_int_distribution<int> distribution(0, (int)points.size() - 1);
@@ -304,6 +317,7 @@ void batchSpinningImage(vector<Point3f>& points,
 
 		if (hit != images.end())
 		{
+			--count;
 			continue;
 		}
 
@@ -317,7 +331,9 @@ void batchSpinningImage(vector<Point3f>& points,
 	}
 }
 
-void printImgs(map<int, Mat>& images, vector<Point3f>& point, string tag)
+void printImgs(map<int, Mat>& images,
+			   vector<Point3f>& points,
+			   string tag)
 {
 	for (const auto & img : images)
 	{
@@ -327,15 +343,127 @@ void printImgs(map<int, Mat>& images, vector<Point3f>& point, string tag)
 		equalizeHist(theImg, theImg);
 		bool succ = imwrite("image_output/" + tag + "_"
 							+ "cood_"
-							+ to_string(point[index].x) + "_"
-							+ to_string(point[index].y) + "_"
-							+ to_string(point[index].z) + ".bmp"
+							+ to_string(points[index].x) + "_"
+							+ to_string(points[index].y) + "_"
+							+ to_string(points[index].z) + ".bmp"
 							, theImg);
 		if (!succ)
 		{
 			printf(" Image writing fialed \n ");
 		}
 	}
+}
+
+void initData(map<string, vector<Mat> >& target, 
+			  map<int, Mat>& data,
+			  string dataType)
+{
+	for (const auto & elem : data)
+	{
+		target[dataType].push_back(elem.second);
+	}
+}
+
+
+float imageDistance(const Mat& img1, const Mat& img2)
+{
+	float ret = 0.0f;
+
+	for (int r = 0; r < img1.rows; ++r)
+	{
+		for (int c = 0; c < img1.cols; ++c)
+		{
+			float elemLeft = (float)img1.at<uchar>(r, c);
+			float elemRight = (float)img2.at<uchar>(r, c);
+			ret += (elemLeft - elemRight) * (elemLeft - elemRight);
+		}
+	}
+	return sqrt(ret);
+}
+
+
+void computeVotes(map<string, vector<Mat> >& testData,
+				  map<string, vector<Mat> >& trainingData,
+				  map<string, map<string, int> >& votes,
+				  string testClass)
+{
+	int selected = -1; // 0: apple, 1. banana, 2. lemon 
+	float dist = numeric_limits<float>::max();
+	string trainingClass[3] = { "apple", "banana", "lemon" };
+	for (const auto & test : testData[testClass])
+	{	
+		for (int i = 0; i < 3; ++i)
+		{
+			for (const auto & data : trainingData[trainingClass[i]])
+			{
+				float tmpDist = imageDistance(test, data);
+				if (tmpDist < dist)
+				{
+					dist = tmpDist;
+					selected = i;
+				}
+			}
+		}
+		assert(selected != -1);
+		++votes[testClass][trainingClass[selected]];
+	}
+}
+
+
+void generateReport(map<string, map<string, int> >& votes, string path)
+{
+	string trainingClass[3] = { "apple", "banana", "lemon" };
+	ofstream outFile(path);
+	if (!outFile)
+	{
+		cerr << "Error opening output file: " << path << "!" << endl;
+	}
+	
+	int total = votes.size() * 30; 
+
+	map<string, int> errorCount;
+	errorCount[trainingClass[0]] = 0;
+	errorCount[trainingClass[1]] = 0;
+	errorCount[trainingClass[2]] = 0;
+
+	for (auto & sample : votes)
+	{
+		string testName = sample.first;
+		string trueClass(testName);
+		trueClass.resize(trueClass.size() - 1);
+		outFile << "Test sample: " << testName << endl;
+
+		int vote = 0;
+		string label;
+		for (int i = 0; i < 3; ++i)
+		{
+			int tmp = sample.second[trainingClass[i]];
+			if ( tmp > vote)
+			{
+				label = trainingClass[i];
+				vote = tmp;
+			}
+			outFile << trainingClass[i] << "'s votes: " << tmp << endl;
+		}
+
+		outFile << "Computed label: " << label << endl;
+		outFile << "Actural label: " << trueClass << endl;
+
+		if (label != trueClass)
+		{
+			++errorCount[label];
+		}
+
+		outFile << "---------------------------" << endl;
+	}
+
+	for (int i = 0; i < 3; ++i)
+	{
+		int count = errorCount[trainingClass[i]];
+		outFile << trainingClass[i] << " error rate: " << (float)count / (float)total << endl;
+	}
+
+	outFile.close();
 }
 
 int main(int argc, char** argv)
@@ -347,6 +475,7 @@ int main(int argc, char** argv)
 	string applePrefix = "hw7_plys/apple_";
 	string bananaPrefix = "hw7_plys/banana_";
 	string lemonPrefix = "hw7_plys/lemon_";
+
 	readBatchVerts(applePrefix, apple, numOfSets);
 	readBatchVerts(bananaPrefix, banana, numOfSets);
 	readBatchVerts(lemonPrefix, lemon, numOfSets);
@@ -363,26 +492,54 @@ int main(int argc, char** argv)
 	GenBatchNormals(appleNormals, apple, appleIdxs, appleDists, numOfSets);
 	GenBatchNormals(bananaNormals, banana, bananaIdxs, bananaDists, numOfSets);
 	GenBatchNormals(lemonNormals, lemon, lemonIdxs, lemonDists, numOfSets);
-	//printResult(apple[0], appleNormals[0], "apple_1_result.txt");
-	//printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
-	//printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
+	printResult(apple[0], appleNormals[0], "apple_1_result.txt");
+	printResult(banana[0], bananaNormals[0], "banana_1_result.txt");
+	printResult(lemon[0], lemonNormals[0], "lemon_1_result.txt");
 
 
 	// TODO: Q2 "Spinning Image Recognition"
-	const int numOfPrints = 2;
+	const int numOfPrints = 4;
 	map<int, Mat> appleImgs[numOfPrints], bananaImgs[numOfPrints], lemonImgs[numOfPrints];
 	for (int i = 0; i < numOfPrints; ++i)
 	{
 		batchSpinningImage(apple[i], appleNormals[i], 30, appleImgs[i]);
 		batchSpinningImage(banana[i], bananaNormals[i], 30, bananaImgs[i]);
 		batchSpinningImage(lemon[i], lemonNormals[i], 30, lemonImgs[i]);
-		//printImgs(appleImgs[i], apple[i], "apple_" + to_string(i + 1));
-		//printImgs(bananaImgs[i], banana[i], "banana_" + to_string(i + 1));
-		//printImgs(lemonImgs[i], lemon[i], "lemon_" + to_string(i + 1));
+		printImgs(appleImgs[i], apple[i], "apple_" + to_string(i + 1));
+		printImgs(bananaImgs[i], banana[i], "banana_" + to_string(i + 1));
+		printImgs(lemonImgs[i], lemon[i], "lemon_" + to_string(i + 1));
 	}
 
 	// TODO: Q3 "Train data and classify data"
+	map<string, vector<Mat> > trainingData, testData;
+	// STEP 1: INIT ALL DATA
+	// preparing training data
+	initData(trainingData, appleImgs[0], "apple");
+	initData(trainingData, appleImgs[1], "apple");
+	initData(trainingData, bananaImgs[0], "banana");
+	initData(trainingData, bananaImgs[1], "banana");
+	initData(trainingData, lemonImgs[0], "lemon");
+	initData(trainingData, lemonImgs[1], "lemon");
 
+	// preparing test data
+	initData(testData, appleImgs[2], "apple3");
+	initData(testData, appleImgs[3], "apple4");
+	initData(testData, bananaImgs[2], "banana3");
+	initData(testData, bananaImgs[3], "banana4");
+	initData(testData, lemonImgs[2], "lemon3");
+	initData(testData, lemonImgs[3], "lemon4");
+
+	// STEP 2: GET VOTES
+	map<string, map<string, int> > votes;
+	computeVotes(testData, trainingData, votes, "apple3");
+	computeVotes(testData, trainingData, votes, "apple4");
+	computeVotes(testData, trainingData, votes, "banana3");
+	computeVotes(testData, trainingData, votes, "banana4");
+	computeVotes(testData, trainingData, votes, "lemon3");
+	computeVotes(testData, trainingData, votes, "lemon4");
+
+	// STEP 3: GENERATE REPORT
+	generateReport(votes, "HW7_Report.txt");
 
 
 	return EXIT_SUCCESS;
