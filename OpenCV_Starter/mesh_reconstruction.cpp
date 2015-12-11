@@ -282,7 +282,7 @@ void spinningImage(const Point3f & point,
 				   Mat& image)
 {
 	int size = BIN_SIZE * NUM_OF_BINS;
-	image = Mat::zeros(size + 1, size + 1, CV_8U);
+	image = Mat::zeros(size, size, CV_8U);
 	for (int i = 0; i < pointCloud.size(); ++i)
 	{
 		// Project to 2D : from cartesian to cylindrical
@@ -295,7 +295,7 @@ void spinningImage(const Point3f & point,
 		int y = abs((int)(floor(size * 0.5f - newY)));
 		int x = abs((int)(floor(size * 0.5f - newX)));
 
-		if (x <= size && y <= size)
+		if (x < size && y < size)
 		{
 			++image.at<uchar>(y, x);
 		}
@@ -324,10 +324,9 @@ void batchSpinningImage(vector<Point3f>& points,
 		Point3f pt = points[selected];
 		Point3f n = normals[selected];
 		spinningImage(pt, n, points, images[selected]);
-		//Mat tmp = images[selected];
-		//bitwise_not(tmp, tmp);
-		// OR: Mat invSrc =  cv::Scalar::all(255) - src;
-		//equalizeHist(tmp, tmp);
+		Mat theImg = images[selected];
+		bitwise_not(theImg, theImg);
+		equalizeHist(theImg, theImg);
 	}
 }
 
@@ -338,9 +337,7 @@ void printImgs(map<int, Mat>& images,
 	for (const auto & img : images)
 	{
 		int index = img.first;
-		Mat theImg = img.second.clone();
-		bitwise_not(theImg, theImg);
-		equalizeHist(theImg, theImg);
+		Mat theImg = img.second;
 		bool succ = imwrite("image_output/" + tag + "_"
 							+ "cood_"
 							+ to_string(points[index].x) + "_"
@@ -365,16 +362,16 @@ void initData(map<string, vector<Mat> >& target,
 }
 
 
-float imageDistance(const Mat& img1, const Mat& img2)
+double imageDistance(const Mat& img1, const Mat& img2)
 {
-	float ret = 0.0f;
+	double ret = 0.0f;
 
 	for (int r = 0; r < img1.rows; ++r)
 	{
 		for (int c = 0; c < img1.cols; ++c)
 		{
-			float elemLeft = (float)img1.at<uchar>(r, c);
-			float elemRight = (float)img2.at<uchar>(r, c);
+			double elemLeft = (double)img1.at<uchar>(r, c);
+			double elemRight = (double)img2.at<uchar>(r, c);
 			ret += (elemLeft - elemRight) * (elemLeft - elemRight);
 		}
 	}
@@ -388,7 +385,7 @@ void computeVotes(map<string, vector<Mat> >& testData,
 				  string testClass)
 {
 	int selected = -1; // 0: apple, 1. banana, 2. lemon 
-	float dist = numeric_limits<float>::max();
+	double dist = numeric_limits<double>::max();
 	string trainingClass[3] = { "apple", "banana", "lemon" };
 	for (const auto & test : testData[testClass])
 	{	
@@ -396,7 +393,7 @@ void computeVotes(map<string, vector<Mat> >& testData,
 		{
 			for (const auto & data : trainingData[trainingClass[i]])
 			{
-				float tmpDist = imageDistance(test, data);
+				double tmpDist = imageDistance(test, data);
 				if (tmpDist < dist)
 				{
 					dist = tmpDist;
@@ -418,13 +415,13 @@ void generateReport(map<string, map<string, int> >& votes, string path)
 	{
 		cerr << "Error opening output file: " << path << "!" << endl;
 	}
-	
-	int total = votes.size() * 30; 
 
-	map<string, int> errorCount;
-	errorCount[trainingClass[0]] = 0;
-	errorCount[trainingClass[1]] = 0;
-	errorCount[trainingClass[2]] = 0;
+	map<string, int> successCount;
+	successCount[trainingClass[0]] = 0;
+	successCount[trainingClass[1]] = 0;
+	successCount[trainingClass[2]] = 0;
+
+	int total = 0;
 
 	for (auto & sample : votes)
 	{
@@ -433,12 +430,12 @@ void generateReport(map<string, map<string, int> >& votes, string path)
 		trueClass.resize(trueClass.size() - 1);
 		outFile << "Test sample: " << testName << endl;
 
-		int vote = 0;
+		int vote = -1;
 		string label;
 		for (int i = 0; i < 3; ++i)
 		{
 			int tmp = sample.second[trainingClass[i]];
-			if ( tmp > vote)
+			if ( tmp >= vote)
 			{
 				label = trainingClass[i];
 				vote = tmp;
@@ -449,18 +446,20 @@ void generateReport(map<string, map<string, int> >& votes, string path)
 		outFile << "Computed label: " << label << endl;
 		outFile << "Actural label: " << trueClass << endl;
 
-		if (label != trueClass)
+		if (label == trueClass)
 		{
-			++errorCount[label];
+			++successCount[label];
 		}
+
+		total++;
 
 		outFile << "---------------------------" << endl;
 	}
 
 	for (int i = 0; i < 3; ++i)
 	{
-		int count = errorCount[trainingClass[i]];
-		outFile << trainingClass[i] << " error rate: " << (float)count / (float)total << endl;
+		int count = successCount[trainingClass[i]];
+		outFile << trainingClass[i] << " error rate: " << (1.0 - (double)count / (double) total )<< endl;
 	}
 
 	outFile.close();
